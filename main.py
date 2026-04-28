@@ -115,7 +115,7 @@ if traffic_data is not None:
                 line=dict(width=4, color='#00FFFF'), name="AI Bypass"
             ))
 
-    # --- 🅿️ Parking Update (Markers Always Visible) ---
+    # --- 🅿️ Parking Update ---
     if show_parking and parking_data is not None:
         fig_map.add_trace(go.Scattermapbox(
             lat=parking_data['Lattitude'], 
@@ -145,15 +145,14 @@ if traffic_data is not None:
         st.subheader("🅿️ Smart Parking Status")
         p_df = parking_data.copy()
         
-        # Column names update to match your screenshot
+        # 🛠️ සැබෑ Vehicle Capacity එක පෙන්වීමට නිවැරදි Column එක Rename කිරීම
         p_df = p_df.rename(columns={
             'Slot Name': 'Location',
-            'Lattitude': 'Vehicle Capacity' # Just to match your SS visual style
+            'Capacity estimate': 'Vehicle Capacity'  # Coordinates වෙනුවට සැබෑ Capacity එක දැම්මා
         })
 
         # 🎯 Dynamic Status Logic
         def get_current_status(prediction, index):
-            # Prediction එක 50% ට වැඩි නම් වැඩිපුර Slots "Full" වෙනවා
             threshold = 50 
             if prediction > threshold:
                 return "Full ❌" if (index * prediction) % 10 > 3 else "Available ✅"
@@ -162,7 +161,7 @@ if traffic_data is not None:
         
         p_df['Current Status'] = [get_current_status(ai_pred, i) for i in range(len(p_df))]
         
-        # Displaying only the columns shown in your screenshot
+        # ටේබල් එකේ දැන් Location, Vehicle Capacity (Number) සහ Status පෙන්වනවා
         st.dataframe(p_df[['Location', 'Vehicle Capacity', 'Current Status']], use_container_width=True, height=450)
 else:
     st.error("Missing Data Files!")
