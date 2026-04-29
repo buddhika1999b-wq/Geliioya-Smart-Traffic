@@ -36,7 +36,7 @@ def train_model(df):
         except: return 0
     temp_df['Time_Numeric'] = temp_df[time_col].apply(extract_hour)
     
-    # 🚨 Practical Time Logic (Injecting into training data)
+    # 🚨 Practical Time Logic
     def apply_custom_logic(row):
         h = row['Time_Numeric']
         d = row['Day_Type']
@@ -63,26 +63,22 @@ def load_data():
         parking.columns = parking.columns.str.strip()
         
         bypass_roads = []
+        # GitHub එකේ තියෙන අකුරු වලට ගැලපෙන්න වෙනස් කළා
         shp_path = "Gelioya_BypassRd.shp" 
         
-        # 🚨 SHP File එක කියවීමේ වැඩිදියුණු කළ කොටස
-        if SHP_SUPPORT:
-            if os.path.exists(shp_path):
-                try:
-                    sf = shapefile.Reader(shp_path)
-                    for shape in sf.shapes():
-                        lons, lats = zip(*shape.points)
-                        bypass_roads.append({'lats': list(lats), 'lons': list(lons)})
-                except Exception as e:
-                    # Sidebar එකේ පෙන්වීමට error එක return කරනවා වෙනුවට message එකක් දාමු
-                    st.error(f"Error reading .shp file: {e}")
-            else:
-                st.warning("Gelioya_BypassRd.shp file not found!")
-        else:
-            st.error("Library 'pyshp' is not installed.")
-
+        if SHP_SUPPORT and os.path.exists(shp_path):
+            try:
+                sf = shapefile.Reader(shp_path)
+                for shape in sf.shapes():
+                    lons, lats = zip(*shape.points)
+                    bypass_roads.append({'lats': list(lats), 'lons': list(lons)})
+            except Exception as e:
+                st.sidebar.error(f"SHP Error: {e}")
+        elif not os.path.exists(shp_path):
+            st.sidebar.warning(f"File Not Found: {shp_path}")
+            
         return traffic, parking, bypass_roads
-    except Exception as e: 
+    except Exception as e:
         st.error(f"Data Loading Error: {e}")
         return None, None, []
 
@@ -98,7 +94,7 @@ if traffic_data is not None:
     # Sidebar Controls
     st.sidebar.header("Control Panel")
     day_type = st.sidebar.selectbox("Select Day", traffic_data['Day_Type'].unique())
-    time_24 = st.sidebar.slider("Select Time (Hour)", 6, 22, 17)
+    time_24 = st.sidebar.slider("Select Time (Hour)", 6, 22, 14)
     time_display = f"{time_24-12 if time_24 > 12 else time_24}:00 {'PM' if time_24 >= 12 else 'AM'}"
     map_theme = st.sidebar.selectbox("Map Style", ["open-street-map", "carto-positron", "carto-darkmatter"])
     show_parking = st.sidebar.checkbox("Show Parking", value=True)
@@ -130,9 +126,8 @@ if traffic_data is not None:
         color_discrete_map={'High (Red)':'#FF0000', 'Moderate (Orange)':'#FFA500', 'Low (Green)':'#00FF00'}
     )
 
-    # 🚦 Bypass Roads Logic (Visible during Peak times or High prediction)
+    # 🚦 Bypass Roads Logic
     is_peak = (7 <= time_24 <= 8) or (12 <= time_24 <= 14) or (16 <= time_24 <= 19) or (day_type == 'Saturday')
-    
     if (ai_pred > 40 or is_peak) and bypass_roads:
         for road in bypass_roads:
             fig_map.add_trace(go.Scattermapbox(
@@ -140,14 +135,14 @@ if traffic_data is not None:
                 lat=road['lats'], 
                 lon=road['lons'],
                 line=dict(width=5, color='#00FFFF'), 
-                name="AI Recommended Bypass"
+                name="AI Bypass Active"
             ))
 
-    # 🅿️ Parking Markers on Map
+    # 🅿️ Parking Markers
     if show_parking and parking_data is not None:
         fig_map.add_trace(go.Scattermapbox(
             lat=parking_data['Lattitude'], lon=parking_data['Longitude'],
-            mode='markers+text', marker=dict(size=15, color='#007BFF'),
+            mode='markers+text', marker=dict(size=12, color='#007BFF'),
             text="P", textposition="middle center", textfont=dict(size=10, color="white"),
             hoverinfo='text', hovertext=parking_data['Slot Name'], name="Parking"
         ))
