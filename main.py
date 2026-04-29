@@ -4,9 +4,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import telepot
-import requests
-from telepot.loop import MessageLoop
-from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import LabelEncoder
 
@@ -19,7 +16,7 @@ except ImportError:
 
 # --- 🤖 Telegram Bot Configuration ---
 BOT_TOKEN = '8602459951:AAEQif4JnTDQjl7gvnVGv0pEw-tXn3b6DKs'
-MY_CHAT_ID = '5365836212'      # ඔයාගේ Personal ID
+MY_CHAT_ID = '5365836212'
 GROUP_CHAT_ID = '-1003967636037'
 bot = telepot.Bot(BOT_TOKEN)
 DASHBOARD_URL = "https://gelioya-traffic-ai.streamlit.app"
@@ -82,7 +79,7 @@ if traffic_data is not None:
     st.sidebar.subheader("Community Broadcast")
     st.sidebar.info(f"AI Prediction: {ai_pred:.1f}%")
     
-    # --- 📢 Telegram Sending Logic (Updated for Group & Personal) ---
+    # --- 📢 Telegram Sending Logic ---
     if st.sidebar.button("📢 Send Update to Telegram"):
         try:
             status = "🔴 HIGH" if ai_pred > 70 else "🟡 MODERATE" if ai_pred > 40 else "🟢 LOW"
@@ -93,12 +90,9 @@ if traffic_data is not None:
                    f"📈 Congestion: {ai_pred:.1f}%\n\n"
                    f"🔗 Live Dashboard: {DASHBOARD_URL}")
             
-            # IDs දෙකටම ලූපයක් හරහා මැසේජ් එක යවනවා
             receivers = [MY_CHAT_ID, GROUP_CHAT_ID]
             for chat_id in receivers:
-                # telepot එකෙන් හෝ කෙලින්ම API එකෙන් යැවිය හැක
                 bot.sendMessage(chat_id, msg, parse_mode='Markdown')
-                
             st.sidebar.success("✅ Alert Sent to Group & Admin!")
         except Exception as e: 
             st.sidebar.error(f"Telegram Error: {e}")
@@ -106,7 +100,7 @@ if traffic_data is not None:
     map_theme = st.sidebar.selectbox("Map Style", ["open-street-map", "carto-positron", "carto-darkmatter"])
     show_parking = st.sidebar.checkbox("Show Parking", value=True)
     
-    # --- 📍 Map Section ---
+    # --- 📍 Map Section (Bypass Logic Updated) ---
     st.subheader(f"📍 Traffic Forecast & Routing: {day_type} at {time_display}")
     filtered_traffic = traffic_data[traffic_data['Day_Type'] == day_type].copy()
     
@@ -117,31 +111,31 @@ if traffic_data is not None:
         color_discrete_map={'High (Red)':'#FF0000', 'Moderate (Orange)':'#FFA500', 'Low (Green)':'#00FF00'}
     )
 
-    if (ai_pred > 40 or 16 <= time_24 <= 19) and bypass_roads:
+    # --- 🚦 New Practical Bypass Logic ---
+    is_school_time = (7 <= time_24 <= 8) or (12 <= time_24 <= 14)
+    is_office_time = (16 <= time_24 <= 19)
+    is_tuition_day = (day_type == 'Saturday')
+    
+    # AI එක 40% ට වඩා වැඩි වුණොත් හෝ ඔයා කියපු විශේෂිත වෙලාවන් වලදී පාරවල් පෙන්වයි
+    if (ai_pred > 40 or is_school_time or is_office_time or is_tuition_day) and bypass_roads:
         for road in bypass_roads:
             fig_map.add_trace(go.Scattermapbox(
                 mode="lines", lat=road['lats'], lon=road['lons'],
-                line=dict(width=4, color='#00FFFF'), name="AI Bypass"
+                line=dict(width=4, color='#00FFFF'), name="AI Bypass Active"
             ))
 
     if show_parking and parking_data is not None:
         fig_map.add_trace(go.Scattermapbox(
-            lat=parking_data['Lattitude'], 
-            lon=parking_data['Longitude'],
-            mode='markers+text',
-            marker=dict(size=15, color='#007BFF'),
-            text="P",
-            textposition="middle center",
-            textfont=dict(size=10, color="white"),
-            hoverinfo='text',
-            hovertext=parking_data['Slot Name'],
-            name="Parking"
+            lat=parking_data['Lattitude'], lon=parking_data['Longitude'],
+            mode='markers+text', marker=dict(size=15, color='#007BFF'),
+            text="P", textposition="middle center", textfont=dict(size=10, color="white"),
+            hoverinfo='text', hovertext=parking_data['Slot Name'], name="Parking"
         ))
 
     fig_map.update_layout(mapbox_style=map_theme, margin={"r":0,"t":0,"l":0,"b":0})
     st.plotly_chart(fig_map, use_container_width=True)
 
-    # --- 📊 Lower Section ---
+    # --- 📊 Lower Section (Graph & Parking Fixed) ---
     col1, col2 = st.columns([1, 1.2])
     with col1:
         st.subheader("📊 Congestion Analysis")
@@ -151,12 +145,8 @@ if traffic_data is not None:
     
     with col2:
         st.subheader("🅿️ Smart Parking Status")
-        p_df = parking_data.copy()
-        p_df = p_df.rename(columns={
-            'Slot Name': 'Location',
-            'Capacity estimate': 'Vehicle Capacity'
-        })
-
+        p_df = parking_data.copy().rename(columns={'Slot Name': 'Location', 'Capacity estimate': 'Vehicle Capacity'})
+        
         def get_current_status(prediction, index):
             threshold = 50 
             if prediction > threshold:
