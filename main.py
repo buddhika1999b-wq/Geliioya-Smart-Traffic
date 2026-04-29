@@ -4,9 +4,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import telepot
-import requests
-from telepot.loop import MessageLoop
-from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import LabelEncoder
 
@@ -19,8 +16,8 @@ except ImportError:
 
 # --- 🤖 Telegram Bot Configuration ---
 BOT_TOKEN = '8602459951:AAEQif4JnTDQjl7gvnVGv0pEw-tXn3b6DKs'
-MY_CHAT_ID = '5365836212'      # ඔයාගේ Personal ID
-GROUP_CHAT_ID = '-1003967636037'
+MY_CHAT_ID = '5365836212'
+GROUP_CHAT_ID = '-1003967636037' # ඔයාගේ අලුත් Supergroup ID එක
 bot = telepot.Bot(BOT_TOKEN)
 DASHBOARD_URL = "https://gelioya-traffic-ai.streamlit.app"
 
@@ -82,54 +79,66 @@ if traffic_data is not None:
     st.sidebar.subheader("Community Broadcast")
     st.sidebar.info(f"AI Prediction: {ai_pred:.1f}%")
     
-    # --- 📢 Telegram Sending Logic (Updated for Group & Personal) ---
     if st.sidebar.button("📢 Send Update to Telegram"):
         try:
             status = "🔴 HIGH" if ai_pred > 70 else "🟡 MODERATE" if ai_pred > 40 else "🟢 LOW"
             msg = (f"📢 *GELIOYA TRAFFIC REPORT*\n\n"
-                   f"🕒 *Time:* {time_display}\n"
-                   f"📅 *Day:* {day_type}\n"
-                   f"📊 *AI Status:* {status}\n"
-                   f"📈 *Congestion:* {ai_pred:.1f}%\n\n"
-                   f"🔗 *Live Dashboard:* {DASHBOARD_URL}")
-            
-            # IDs දෙකටම ලූපයක් හරහා මැසේජ් එක යවනවා
-            receivers = [MY_CHAT_ID, GROUP_CHAT_ID]
-            for chat_id in receivers:
-                # telepot එකෙන් හෝ කෙලින්ම API එකෙන් යැවිය හැක
-                bot.sendMessage(chat_id, msg, parse_mode='Markdown')
-                
+                   f"🕒 Time: {time_display}\n"
+                   f"📅 Day: {day_type}\n"
+                   f"📊 AI Status: {status}\n"
+                   f"📈 Congestion: {ai_pred:.1f}%\n\n"
+                   f"🔗 View Map: {DASHBOARD_URL}")
+            # Personal සහ Group දෙකටම යවනවා
+            bot.sendMessage(MY_CHAT_ID, msg, parse_mode='Markdown')
+            bot.sendMessage(GROUP_CHAT_ID, msg, parse_mode='Markdown')
             st.sidebar.success("✅ Alert Sent to Group & Admin!")
-        except Exception as e: 
-            st.sidebar.error(f"Telegram Error: {e}")
+        except: st.sidebar.error("Telegram Error!")
 
     map_theme = st.sidebar.selectbox("Map Style", ["open-street-map", "carto-positron", "carto-darkmatter"])
     show_parking = st.sidebar.checkbox("Show Parking", value=True)
     
-    # --- 📍 Map Section ---
+    # --- 📍 Map Section (Updated with Traffic Lines) ---
     st.subheader(f"📍 Traffic Forecast & Routing: {day_type} at {time_display}")
     filtered_traffic = traffic_data[traffic_data['Day_Type'] == day_type].copy()
     
-    fig_map = px.scatter_mapbox(
-        filtered_traffic, lat="Latitude", lon="Longitude", color="Traffic_Level",
-        hover_name="Road_Segment", size_max=15, zoom=14.5, height=600,
-        center={"lat": 7.213, "lon": 80.593},
-        color_discrete_map={'High (Red)':'#FF0000', 'Moderate (Orange)':'#FFA500', 'Low (Green)':'#00FF00'}
-    )
+    # මුලින්ම හිස් map එකක් හදනවා
+    fig_map = go.Figure()
 
+    # සෑම පාරක්ම (Road Segment) වෙන වෙනම Lines ලෙස ඇඳීම
+    for road_name in filtered_traffic['Road_Segment'].unique():
+        road_subset = filtered_traffic[filtered_traffic['Road_Segment'] == road_name]
+        
+        # ට්‍රැෆික් වර්ණය තීරණය කිරීම (පළමු පේළිය අනුව)
+        t_level = road_subset['Traffic_Level'].iloc[0]
+        line_color = '#FF0000' if 'High' in t_level else '#FFA500' if 'Moderate' in t_level else '#00FF00'
+        
+        # පාරවල් රේඛා ලෙස එකතු කිරීම
+        fig_map.add_trace(go.Scattermapbox(
+            mode="lines+markers",
+            lat=road_subset['Latitude'],
+            lon=road_subset['Longitude'],
+            line=dict(width=5, color=line_color),
+            marker=dict(size=8, color=line_color),
+            name=road_name,
+            hoverinfo='text',
+            text=f"{road_name}: {t_level}"
+        ))
+
+    # Bypass Roads (AI මගින් යෝජනා කරන විට)
     if (ai_pred > 40 or 16 <= time_24 <= 19) and bypass_roads:
         for road in bypass_roads:
             fig_map.add_trace(go.Scattermapbox(
                 mode="lines", lat=road['lats'], lon=road['lons'],
-                line=dict(width=4, color='#00FFFF'), name="AI Bypass"
+                line=dict(width=4, color='#00FFFF', dash='dash'), name="AI Bypass Route"
             ))
 
+    # Smart Parking Markers
     if show_parking and parking_data is not None:
         fig_map.add_trace(go.Scattermapbox(
             lat=parking_data['Lattitude'], 
             lon=parking_data['Longitude'],
             mode='markers+text',
-            marker=dict(size=15, color='#007BFF'),
+            marker=dict(size=18, color='#007BFF', symbol='parking'),
             text="P",
             textposition="middle center",
             textfont=dict(size=10, color="white"),
@@ -138,7 +147,15 @@ if traffic_data is not None:
             name="Parking"
         ))
 
-    fig_map.update_layout(mapbox_style=map_theme, margin={"r":0,"t":0,"l":0,"b":0})
+    fig_map.update_layout(
+        mapbox=dict(
+            style=map_theme,
+            center={"lat": 7.213, "lon": 80.593},
+            zoom=14.5
+        ),
+        margin={"r":0,"t":0,"l":0,"b":0},
+        height=600
+    )
     st.plotly_chart(fig_map, use_container_width=True)
 
     # --- 📊 Lower Section ---
@@ -152,10 +169,7 @@ if traffic_data is not None:
     with col2:
         st.subheader("🅿️ Smart Parking Status")
         p_df = parking_data.copy()
-        p_df = p_df.rename(columns={
-            'Slot Name': 'Location',
-            'Capacity estimate': 'Vehicle Capacity'
-        })
+        p_df = p_df.rename(columns={'Slot Name': 'Location', 'Capacity estimate': 'Vehicle Capacity'})
 
         def get_current_status(prediction, index):
             threshold = 50 
