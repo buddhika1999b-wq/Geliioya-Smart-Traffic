@@ -56,7 +56,6 @@ def train_model(df):
 @st.cache_data
 def load_data():
     try:
-        # File path must match your GitHub file name
         traffic = pd.read_csv('Weekly_Traffic_Simulation.csv', encoding='latin1')
         parking = pd.read_csv('Parking Slot.csv', encoding='latin1')
         traffic.columns = traffic.columns.str.strip()
@@ -88,7 +87,7 @@ if traffic_data is not None:
     time_24 = st.sidebar.slider("Select Time (Hour)", 6, 22, 17)
     time_display = f"{time_24-12 if time_24 > 12 else time_24}:00 {'PM' if time_24 >= 12 else 'AM'}"
     
-    ai_pred = 0 # Default value
+    ai_pred = 0 
     if model is not None:
         day_enc = encoder.transform([day_type])[0]
         raw_pred = model.predict([[day_enc, time_24]])[0]
@@ -115,27 +114,26 @@ if traffic_data is not None:
     map_theme = st.sidebar.selectbox("Map Style", ["open-street-map", "carto-positron", "carto-darkmatter"])
     show_parking = st.sidebar.checkbox("Show Parking", value=True)
     
-    # --- 📍 Map Section (Final Fix) ---
+    # --- 📍 Map Section (Final Fix for Overlapping) ---
     st.subheader(f"📍 Traffic Forecast & Routing: {day_type} at {time_display}")
     
-    # පාරවල් වල රේඛා හරියට ඇඳෙන්න Sort කිරීම
     filtered_traffic = traffic_data[traffic_data['Day_Type'] == day_type].copy()
-    filtered_traffic = filtered_traffic.sort_values(by=['Road_Segment', 'Latitude'])
-
+    
     fig_map = go.Figure()
 
-    # සෑම පාරක්ම (Segment) වෙන වෙනම Lines ලෙස ඇඳීම
     for road_name in filtered_traffic['Road_Segment'].unique():
-        road_subset = filtered_traffic[filtered_traffic['Road_Segment'] == road_name]
-        
-        # Traffic Level එක අනුව වර්ණය තෝරාගැනීම
+        # එම පාරේ දත්ත ගෙන පැටලුණු Coordinates (Duplicates) ඉවත් කිරීම
+        road_subset = filtered_traffic[filtered_traffic['Road_Segment'] == road_name].copy()
+        road_subset = road_subset.drop_duplicates(subset=['Latitude', 'Longitude'])
+        road_subset = road_subset.sort_values(by=['Latitude']) # රේඛා පිළිවෙළට තැබීමට
+
         t_level = str(road_subset['Traffic_Level'].iloc[0])
         if 'High' in t_level:
-            line_color = '#FF0000' # Red
+            line_color = '#FF4B4B' 
         elif 'Moderate' in t_level:
-            line_color = '#FFA500' # Orange
+            line_color = '#FFA500' 
         else:
-            line_color = '#00FF00' # Green
+            line_color = '#00CC66' 
         
         fig_map.add_trace(go.Scattermapbox(
             mode="lines+markers",
@@ -148,7 +146,6 @@ if traffic_data is not None:
             text=f"{road_name}: {t_level}"
         ))
 
-    # Bypass Roads Suggestion
     if (ai_pred > 40 or 16 <= time_24 <= 19) and bypass_roads:
         for road in bypass_roads:
             fig_map.add_trace(go.Scattermapbox(
@@ -156,7 +153,6 @@ if traffic_data is not None:
                 line=dict(width=4, color='#00FFFF', dash='dash'), name="AI Bypass Route"
             ))
 
-    # Parking Points
     if show_parking and parking_data is not None:
         fig_map.add_trace(go.Scattermapbox(
             lat=parking_data['Lattitude'], 
@@ -174,8 +170,8 @@ if traffic_data is not None:
     fig_map.update_layout(
         mapbox=dict(
             style=map_theme, 
-            center={"lat": 7.214, "lon": 80.598}, # Gelioya Junction
-            zoom=15
+            center={"lat": 7.214, "lon": 80.598}, 
+            zoom=15.2
         ),
         margin={"r":0,"t":0,"l":0,"b":0}, height=600,
         showlegend=True
@@ -186,7 +182,9 @@ if traffic_data is not None:
     col1, col2 = st.columns([1, 1.2])
     with col1:
         st.subheader("📊 Congestion Analysis")
-        fig_chart = px.bar(filtered_traffic.drop_duplicates('Road_Segment'), x='Road_Segment', y='Weight', color='Traffic_Level',
+        # Chart එකේදීත් පාරවල් duplicate නොවී පෙන්වීමට
+        chart_df = filtered_traffic.drop_duplicates('Road_Segment')
+        fig_chart = px.bar(chart_df, x='Road_Segment', y='Weight', color='Traffic_Level',
                            color_discrete_map={'High (Red)':'red', 'Moderate (Orange)':'orange', 'Low (Green)':'green'})
         st.plotly_chart(fig_chart, use_container_width=True)
     
