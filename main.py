@@ -57,11 +57,11 @@ if traffic_data is not None:
     time_24 = st.sidebar.slider("Select Time (Hour)", 6, 22, 17)
     time_display = f"{time_24-12 if time_24 > 12 else time_24}:00 {'PM' if time_24 >= 12 else 'AM'}"
     
-    # 🧠 AI Calculation
+    # 🧠 AI Prediction
     day_enc = encoder.transform([day_type])[0]
     ai_val = model.predict([[day_enc, time_24]])[0]
     
-    # AI Status & Formatting
+    # Status Logic
     if ai_val >= 66:
         status_text, status_emoji, status_col = "HIGH TRAFFIC", "🔴", "red"
     elif ai_val >= 31:
@@ -73,7 +73,6 @@ if traffic_data is not None:
     st.sidebar.subheader("Current Traffic Status")
     st.sidebar.info(f"AI STATUS: {status_emoji} {status_text}")
     
-    # --- 📢 Telegram Logic ---
     if st.sidebar.button("📢 Send Update to Telegram"):
         try:
             msg = (f"📢 *GELIOYA TRAFFIC REPORT*\n\n🕒 Time: {time_display}\n📅 Day: {day_type}\n📊 AI Status: {status_emoji} {status_text}\n\n🔗 Live: {DASHBOARD_URL}")
@@ -82,33 +81,33 @@ if traffic_data is not None:
             st.sidebar.success(f"✅ Sent: {status_text}")
         except Exception as e: st.sidebar.error(f"Error: {e}")
 
-    # --- 📍 Map Section (Points) ---
-    st.subheader(f"📍 Live AI Heat-Map: {status_text}")
+    # --- 📍 Map Section (Old Favorite Point View) ---
+    st.subheader(f"📍 Live Traffic Map: {status_text}")
     filtered_traffic = traffic_data[traffic_data['Day_Type'] == day_type].copy()
     
     fig_map = px.scatter_mapbox(
         filtered_traffic, lat="Latitude", lon="Longitude", color="Traffic_Level",
-        hover_name="Road_Segment", size_max=12, zoom=15, height=500,
+        hover_name="Road_Segment", size_max=12, zoom=15, height=550,
         center={"lat": 7.214, "lon": 80.598},
         color_discrete_map={'High (Red)':'#FF0000', 'Moderate (Orange)':'#FFA500', 'Low (Green)':'#00FF00'}
     )
     fig_map.update_layout(mapbox_style="open-street-map", margin={"r":0,"t":0,"l":0,"b":0})
     st.plotly_chart(fig_map, use_container_width=True)
 
-    # --- 📊 Graph Section (AI Updated) ---
+    # --- 📊 Graph Section (Fixed) ---
     col1, col2 = st.columns([1, 1.2])
     with col1:
-        st.subheader("📊 AI Congestion Analysis")
-        # 🚨 AI Prediction එක Graph එකට දැමීම
-        # මෙතනදී Graph එකේ බාර් එකේ උස තීරණය වෙන්නේ AI එකේ අගයෙන්
+        st.subheader("📊 Road-wise AI Prediction")
+        # පාරවල් වල ලිස්ට් එක අරගෙන හැම පාරකටම AI එකෙන් ලැබෙන අගය සමානව පෙන්වනවා
+        roads = filtered_traffic['Road_Segment'].unique()
         fig_chart = go.Figure(go.Bar(
-            x=["Predicted Traffic"], 
-            y=[ai_val],
+            x=roads, 
+            y=[ai_val] * len(roads), # හැම පාරකටම AI අගය දානවා
             marker_color=status_col,
-            text=[f"{status_text}"],
+            text=status_text,
             textposition='auto'
         ))
-        fig_chart.update_layout(yaxis_range=[0, 100], height=400)
+        fig_chart.update_layout(yaxis_title="Congestion Level", yaxis_range=[0, 100], height=450)
         st.plotly_chart(fig_chart, use_container_width=True)
     
     with col2:
@@ -116,6 +115,6 @@ if traffic_data is not None:
         if parking_data is not None:
             p_df = parking_data.copy().rename(columns={'Slot Name': 'Location', 'Capacity estimate': 'Vehicle Capacity'})
             p_df['Current Status'] = ["Full ❌" if (i * ai_val) % 10 > 6 else "Available ✅" for i in range(len(p_df))]
-            st.dataframe(p_df[['Location', 'Vehicle Capacity', 'Current Status']], use_container_width=True, height=400)
+            st.dataframe(p_df[['Location', 'Vehicle Capacity', 'Current Status']], use_container_width=True, height=450)
 else:
     st.error("Missing Data Files!")
