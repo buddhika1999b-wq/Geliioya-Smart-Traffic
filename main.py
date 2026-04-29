@@ -21,21 +21,37 @@ GROUP_CHAT_ID = '-1003967636037' # ඔයාගේ අලුත් Supergroup ID
 bot = telepot.Bot(BOT_TOKEN)
 DASHBOARD_URL = "https://gelioya-traffic-ai.streamlit.app"
 
-# --- 🧠 AI Training Function ---
+# --- 🧠 AI Training Function (Updated for Time_Slot support) ---
 @st.cache_resource
 def train_model(df):
     le = LabelEncoder()
     temp_df = df.copy()
-    time_col = [c for c in temp_df.columns if 'Time' in c][0]
+    
+    # CSV එකේ ඇති Time හෝ Time_Slot කොලම් එක සොයා ගැනීම
+    time_col = None
+    for col in ['Time_Slot', 'Time', 'time', 'Time_slot']:
+        if col in temp_df.columns:
+            time_col = col
+            break
+            
+    if time_col is None:
+        st.error("Error: Time/Time_Slot column not found in CSV!")
+        return None, None
+
     def extract_hour(time_str):
         try:
-            hour = "".join(filter(str.isdigit, str(time_str).split(':')[0]))
+            # "06:00-10:40 AM" වැනි format එකකින් මුල් පැය (06) වෙන් කර ගැනීම
+            hour_part = str(time_str).split(':')[0]
+            hour = "".join(filter(str.isdigit, hour_part))
             return int(hour) if hour else 0
         except: return 0
+        
     temp_df['Time_Numeric'] = temp_df[time_col].apply(extract_hour)
     temp_df['Day_Encoded'] = le.fit_transform(temp_df['Day_Type'])
+    
     X = temp_df[['Day_Encoded', 'Time_Numeric']]
     y = temp_df['Weight']
+    
     model = RandomForestRegressor(n_estimators=100, random_state=42)
     model.fit(X.values, y)
     return model, le
@@ -55,7 +71,9 @@ def load_data():
                 lons, lats = zip(*shape.points)
                 bypass_roads.append({'lats': list(lats), 'lons': list(lons)})
         return traffic, parking, bypass_roads
-    except: return None, None, []
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return None, None, []
 
 # --- 🖥️ User Interface ---
 st.set_page_config(page_title="Gelioya Smart Traffic AI", layout="wide")
@@ -72,59 +90,55 @@ if traffic_data is not None:
     time_24 = st.sidebar.slider("Select Time (Hour)", 6, 22, 17)
     time_display = f"{time_24-12 if time_24 > 12 else time_24}:00 {'PM' if time_24 >= 12 else 'AM'}"
     
-    day_enc = encoder.transform([day_type])[0]
-    ai_pred = model.predict([[day_enc, time_24]])[0]
-    
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Community Broadcast")
-    st.sidebar.info(f"AI Prediction: {ai_pred:.1f}%")
-    
-    if st.sidebar.button("📢 Send Update to Telegram"):
-        try:
-            status = "🔴 HIGH" if ai_pred > 70 else "🟡 MODERATE" if ai_pred > 40 else "🟢 LOW"
-            msg = (f"📢 *GELIOYA TRAFFIC REPORT*\n\n"
-                   f"🕒 Time: {time_display}\n"
-                   f"📅 Day: {day_type}\n"
-                   f"📊 AI Status: {status}\n"
-                   f"📈 Congestion: {ai_pred:.1f}%\n\n"
-                   f"🔗 View Map: {DASHBOARD_URL}")
-            # Personal සහ Group දෙකටම යවනවා
-            bot.sendMessage(MY_CHAT_ID, msg, parse_mode='Markdown')
-            bot.sendMessage(GROUP_CHAT_ID, msg, parse_mode='Markdown')
-            st.sidebar.success("✅ Alert Sent to Group & Admin!")
-        except: st.sidebar.error("Telegram Error!")
+    if model is not None:
+        day_enc = encoder.transform([day_type])[0]
+        ai_pred = model.predict([[day_enc, time_24]])[0]
+        
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Community Broadcast")
+        st.sidebar.info(f"AI Prediction Score: {ai_pred:.1f}%")
+        
+        if st.sidebar.button("📢 Send Update to Telegram"):
+            try:
+                status = "🔴 HIGH" if ai_pred > 70 else "🟡 MODERATE" if ai_pred > 40 else "🟢 LOW"
+                msg = (f"📢 *GELIOYA TRAFFIC REPORT*\n\n"
+                       f"🕒 Time: {time_display}\n"
+                       f"📅 Day: {day_type}\n"
+                       f"📊 AI Status: {status}\n"
+                       f"📈 Congestion: {ai_pred:.1f}%\n\n"
+                       f"🔗 View Map: {DASHBOARD_URL}")
+                bot.sendMessage(MY_CHAT_ID, msg, parse_mode='Markdown')
+                bot.sendMessage(GROUP_CHAT_ID, msg, parse_mode='Markdown')
+                st.sidebar.success("✅ Alert Sent to Group & Admin!")
+            except: st.sidebar.error("Telegram Error!")
 
     map_theme = st.sidebar.selectbox("Map Style", ["open-street-map", "carto-positron", "carto-darkmatter"])
     show_parking = st.sidebar.checkbox("Show Parking", value=True)
     
-    # --- 📍 Map Section (Updated with Traffic Lines) ---
+    # --- 📍 Map Section ---
     st.subheader(f"📍 Traffic Forecast & Routing: {day_type} at {time_display}")
     filtered_traffic = traffic_data[traffic_data['Day_Type'] == day_type].copy()
     
-    # මුලින්ම හිස් map එකක් හදනවා
     fig_map = go.Figure()
 
-    # සෑම පාරක්ම (Road Segment) වෙන වෙනම Lines ලෙස ඇඳීම
+    # පාරවල් රේඛා (Lines) ලෙස ඇඳීම
     for road_name in filtered_traffic['Road_Segment'].unique():
         road_subset = filtered_traffic[filtered_traffic['Road_Segment'] == road_name]
-        
-        # ට්‍රැෆික් වර්ණය තීරණය කිරීම (පළමු පේළිය අනුව)
         t_level = road_subset['Traffic_Level'].iloc[0]
         line_color = '#FF0000' if 'High' in t_level else '#FFA500' if 'Moderate' in t_level else '#00FF00'
         
-        # පාරවල් රේඛා ලෙස එකතු කිරීම
         fig_map.add_trace(go.Scattermapbox(
             mode="lines+markers",
             lat=road_subset['Latitude'],
             lon=road_subset['Longitude'],
             line=dict(width=5, color=line_color),
-            marker=dict(size=8, color=line_color),
+            marker=dict(size=7, color=line_color),
             name=road_name,
             hoverinfo='text',
             text=f"{road_name}: {t_level}"
         ))
 
-    # Bypass Roads (AI මගින් යෝජනා කරන විට)
+    # Bypass Roads
     if (ai_pred > 40 or 16 <= time_24 <= 19) and bypass_roads:
         for road in bypass_roads:
             fig_map.add_trace(go.Scattermapbox(
@@ -132,7 +146,7 @@ if traffic_data is not None:
                 line=dict(width=4, color='#00FFFF', dash='dash'), name="AI Bypass Route"
             ))
 
-    # Smart Parking Markers
+    # Parking Markers
     if show_parking and parking_data is not None:
         fig_map.add_trace(go.Scattermapbox(
             lat=parking_data['Lattitude'], 
@@ -148,13 +162,8 @@ if traffic_data is not None:
         ))
 
     fig_map.update_layout(
-        mapbox=dict(
-            style=map_theme,
-            center={"lat": 7.213, "lon": 80.593},
-            zoom=14.5
-        ),
-        margin={"r":0,"t":0,"l":0,"b":0},
-        height=600
+        mapbox=dict(style=map_theme, center={"lat": 7.213, "lon": 80.593}, zoom=14.5),
+        margin={"r":0,"t":0,"l":0,"b":0}, height=600
     )
     st.plotly_chart(fig_map, use_container_width=True)
 
@@ -168,17 +177,18 @@ if traffic_data is not None:
     
     with col2:
         st.subheader("🅿️ Smart Parking Status")
-        p_df = parking_data.copy()
-        p_df = p_df.rename(columns={'Slot Name': 'Location', 'Capacity estimate': 'Vehicle Capacity'})
+        if parking_data is not None:
+            p_df = parking_data.copy()
+            p_df = p_df.rename(columns={'Slot Name': 'Location', 'Capacity estimate': 'Vehicle Capacity'})
 
-        def get_current_status(prediction, index):
-            threshold = 50 
-            if prediction > threshold:
-                return "Full ❌" if (index * prediction) % 10 > 3 else "Available ✅"
-            else:
-                return "Full ❌" if (index * prediction) % 10 > 8 else "Available ✅"
-        
-        p_df['Current Status'] = [get_current_status(ai_pred, i) for i in range(len(p_df))]
-        st.dataframe(p_df[['Location', 'Vehicle Capacity', 'Current Status']], use_container_width=True, height=450)
+            def get_current_status(prediction, index):
+                threshold = 50 
+                if prediction > threshold:
+                    return "Full ❌" if (index * prediction) % 10 > 3 else "Available ✅"
+                else:
+                    return "Full ❌" if (index * prediction) % 10 > 8 else "Available ✅"
+            
+            p_df['Current Status'] = [get_current_status(ai_pred, i) for i in range(len(p_df))]
+            st.dataframe(p_df[['Location', 'Vehicle Capacity', 'Current Status']], use_container_width=True, height=450)
 else:
-    st.error("Missing Data Files!")
+    st.error("Data loading failed. Check your CSV files.")
