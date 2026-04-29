@@ -43,7 +43,6 @@ def train_model(df):
 @st.cache_data
 def load_data():
     try:
-        # මෙතන පරණ නමම පාවිච්චි කරලා තියෙනවා
         traffic = pd.read_csv('Weekly_Traffic_Simulation.csv', encoding='latin1')
         parking = pd.read_csv('Parking Slot.csv', encoding='latin1')
         traffic.columns = traffic.columns.str.strip()
@@ -73,19 +72,18 @@ if traffic_data is not None:
     time_24 = st.sidebar.slider("Select Time (Hour)", 6, 22, 17)
     time_display = f"{time_24-12 if time_24 > 12 else time_24}:00 {'PM' if time_24 >= 12 else 'AM'}"
     
-    # 🧠 AI Prediction logic with the new range scaling
+    # 🧠 AI Prediction logic
     day_enc = encoder.transform([day_type])[0]
     ai_pred = model.predict([[day_enc, time_24]])[0]
-    ai_pred = max(0, min(100, ai_pred)) # අගය 0-100 අතර තබා ගැනීම
+    ai_pred = max(0, min(100, ai_pred)) 
     
     st.sidebar.markdown("---")
     st.sidebar.subheader("Community Broadcast")
     st.sidebar.metric("AI Congestion Score", f"{ai_pred:.1f}%")
     
-    # --- 📢 Telegram Sending Logic (Updated with new Status Ranges) ---
+    # --- 📢 Telegram Sending Logic ---
     if st.sidebar.button("📢 Send Update to Telegram"):
         try:
-            # අපි කතා කරගත්ත අලුත් Ranges (0-30, 31-65, 66-100)
             if ai_pred >= 66:
                 status = "🔴 HIGH"
                 emoji = "🚗🚕🚙"
@@ -114,32 +112,29 @@ if traffic_data is not None:
     map_theme = st.sidebar.selectbox("Map Style", ["open-street-map", "carto-positron", "carto-darkmatter"])
     show_parking = st.sidebar.checkbox("Show Parking", value=True)
     
-    # --- 📍 Map Section (Fixed for proper line drawing) ---
-    st.subheader(f"📍 Traffic Forecast & Routing: {day_type} at {time_display}")
+    # --- 📍 Map Section (Points Only Method) ---
+    st.subheader(f"📍 Traffic Heat-Points: {day_type} at {time_display}")
     filtered_traffic = traffic_data[traffic_data['Day_Type'] == day_type].copy()
     
-    fig_map = go.Figure()
+    # Points පෙන්වීමට scatter_mapbox භාවිතා කිරීම
+    fig_map = px.scatter_mapbox(
+        filtered_traffic, 
+        lat="Latitude", 
+        lon="Longitude", 
+        color="Traffic_Level",
+        hover_name="Road_Segment", 
+        size_max=12, 
+        zoom=15, 
+        height=600,
+        center={"lat": 7.214, "lon": 80.598},
+        color_discrete_map={
+            'High (Red)':'#FF0000', 
+            'Moderate (Orange)':'#FFA500', 
+            'Low (Green)':'#00FF00'
+        }
+    )
 
-    # පාරවල් වල රේඛා නිවැරදිව ඇඳීම
-    for road_name in filtered_traffic['Road_Segment'].unique():
-        road_subset = filtered_traffic[filtered_traffic['Road_Segment'] == road_name].copy()
-        road_subset = road_subset.drop_duplicates(subset=['Latitude', 'Longitude'])
-        road_subset = road_subset.sort_values(by=['Latitude']) # දිග ඉරි වැළැක්වීමට
-
-        t_level = str(road_subset['Traffic_Level'].iloc[0])
-        line_color = '#FF0000' if 'High' in t_level else '#FFA500' if 'Moderate' in t_level else '#00FF00'
-        
-        fig_map.add_trace(go.Scattermapbox(
-            mode="lines+markers",
-            lat=road_subset['Latitude'],
-            lon=road_subset['Longitude'],
-            line=dict(width=5, color=line_color),
-            marker=dict(size=7, color=line_color),
-            name=road_name,
-            hoverinfo='text',
-            text=f"{road_name}: {t_level}"
-        ))
-
+    # Bypass Roads (Bypass එක විතරක් ඉරක් විදිහට පෙන්වීම හොඳයි, නැත්නම් ඒක හඳුනාගන්න අමාරුයි)
     if (ai_pred > 40 or 16 <= time_24 <= 19) and bypass_roads:
         for road in bypass_roads:
             fig_map.add_trace(go.Scattermapbox(
@@ -147,6 +142,7 @@ if traffic_data is not None:
                 line=dict(width=4, color='#00FFFF', dash='dash'), name="AI Bypass"
             ))
 
+    # Parking Points
     if show_parking and parking_data is not None:
         fig_map.add_trace(go.Scattermapbox(
             lat=parking_data['Lattitude'], 
@@ -158,14 +154,13 @@ if traffic_data is not None:
             name="Parking"
         ))
 
-    fig_map.update_layout(mapbox=dict(style=map_theme, center={"lat": 7.214, "lon": 80.598}, zoom=15), margin={"r":0,"t":0,"l":0,"b":0}, height=600)
+    fig_map.update_layout(mapbox_style=map_theme, margin={"r":0,"t":0,"l":0,"b":0})
     st.plotly_chart(fig_map, use_container_width=True)
 
     # --- 📊 Lower Section ---
     col1, col2 = st.columns([1, 1.2])
     with col1:
         st.subheader("📊 Congestion Analysis")
-        # එකම පාරේ ලකුණු කිහිපයක් තිබුණත් බාර් චාර්ට් එකට එකක් ගැනීම
         chart_df = filtered_traffic.drop_duplicates(subset=['Road_Segment'])
         fig_chart = px.bar(chart_df, x='Road_Segment', y='Weight', color='Traffic_Level',
                            color_discrete_map={'High (Red)':'red', 'Moderate (Orange)':'orange', 'Low (Green)':'green'})
@@ -175,8 +170,6 @@ if traffic_data is not None:
         st.subheader("🅿️ Smart Parking Status")
         p_df = parking_data.copy()
         p_df = p_df.rename(columns={'Slot Name': 'Location', 'Capacity estimate': 'Vehicle Capacity'})
-
-        # පරාසයට අනුව Parking Status එක වෙනස් කිරීම
         p_df['Current Status'] = ["Full ❌" if (i * ai_pred) % 10 > 6 else "Available ✅" for i in range(len(p_df))]
         st.dataframe(p_df[['Location', 'Vehicle Capacity', 'Current Status']], use_container_width=True, height=450)
 else:
