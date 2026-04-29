@@ -136,4 +136,47 @@ if traffic_data is not None:
         p_df['Current Status'] = ["Full ❌" if (i * ai_pred) % 10 > (3 if ai_pred > 50 else 8) else "Available ✅" for i in range(len(p_df))]
         st.dataframe(p_df[['Location', 'Vehicle Capacity', 'Current Status']], use_container_width=True, height=400)
 else:
+    import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import os
+import shapefile # pyshp library
+
+# --- 🧠 Load Data with SHP Logic ---
+@st.cache_data
+def load_all_data():
+    traffic = pd.read_csv('Weekly_Traffic_Simulation.csv', encoding='latin1')
+    parking = pd.read_csv('Parking Slot.csv', encoding='latin1')
+    
+    bypass_list = []
+    shp_path = "Gelioya_BypassRd.shp"
+    
+    # 🚨 SHP File එක පරීක්ෂා කිරීම
+    if os.path.exists(shp_path):
+        try:
+            sf = shapefile.Reader(shp_path)
+            for shape in sf.shapes():
+                lons, lats = zip(*shape.points)
+                bypass_list.append({'lats': list(lats), 'lons': list(lons)})
+        except Exception as e:
+            st.sidebar.error(f"SHP Load Error: {e}") 
+    else:
+        st.sidebar.warning("SHP file missing in GitHub!")
+        
+    return traffic, parking, bypass_list
+
+traffic_data, parking_data, bypass_roads = load_all_data()
+
+# --- 📍 Map එකේ පෙන්වන කොටස ---
+# AI Prediction එක 40% ට වැඩි වෙලාවට විතරක් SHP එකේ පාරවල් අඳිනවා
+if (ai_pred > 40) and bypass_roads:
+    for road in bypass_roads:
+        fig_map.add_trace(go.Scattermapbox(
+            mode="lines",
+            lat=road['lats'],
+            lon=road['lons'],
+            line=dict(width=4, color='#00FFFF'),
+            name="Practical Bypass (SHP Source)"
+        ))
     st.error("Missing Data Files!")
