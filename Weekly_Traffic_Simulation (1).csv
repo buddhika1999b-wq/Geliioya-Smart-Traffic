@@ -1,0 +1,50 @@
+Road_Segment,Day_Type,Time,Weight,Traffic_Level,Latitude,Longitude
+Gelioya Main Rd,Monday,07:00,45,Moderate (Orange),7.213,80.593
+Gelioya Main Rd,Monday,08:00,85,High (Red),7.213,80.593
+Gelioya Main Rd,Monday,12:00,30,Low (Green),7.213,80.593
+Gelioya Main Rd,Monday,17:00,90,High (Red),7.213,80.593
+Gelioya Main Rd,Monday,20:00,20,Low (Green),7.213,80.593
+Gampola Rd,Monday,08:00,80,High (Red),7.2115,80.5925
+Peradeniya Rd,Monday,08:00,75,High (Red),7.2145,80.5935
+Gelioya Main Rd,Tuesday,07:00,45,Moderate (Orange),7.213,80.593
+Gelioya Main Rd,Tuesday,08:00,85,High (Red),7.213,80.593
+Gelioya Main Rd,Tuesday,12:00,30,Low (Green),7.213,80.593
+Gelioya Main Rd,Tuesday,17:00,90,High (Red),7.213,80.593
+Gelioya Main Rd,Tuesday,20:00,20,Low (Green),7.213,80.593
+Gampola Rd,Tuesday,08:00,80,High (Red),7.2115,80.5925
+Peradeniya Rd,Tuesday,08:00,75,High (Red),7.2145,80.5935
+Gelioya Main Rd,Wednesday,07:00,45,Moderate (Orange),7.213,80.593
+Gelioya Main Rd,Wednesday,08:00,85,High (Red),7.213,80.593
+Gelioya Main Rd,Wednesday,12:00,30,Low (Green),7.213,80.593
+Gelioya Main Rd,Wednesday,17:00,90,High (Red),7.213,80.593
+Gelioya Main Rd,Wednesday,20:00,20,Low (Green),7.213,80.593
+Gampola Rd,Wednesday,08:00,80,High (Red),7.2115,80.5925
+Peradeniya Rd,Wednesday,08:00,75,High (Red),7.2145,80.5935
+Gelioya Main Rd,Thursday,07:00,45,Moderate (Orange),7.213,80.593
+Gelioya Main Rd,Thursday,08:00,85,High (Red),7.213,80.593
+Gelioya Main Rd,Thursday,12:00,30,Low (Green),7.213,80.593
+Gelioya Main Rd,Thursday,17:00,90,High (Red),7.213,80.593
+Gelioya Main Rd,Thursday,20:00,20,Low (Green),7.213,80.593
+Gampola Rd,Thursday,08:00,80,High (Red),7.2115,80.5925
+Peradeniya Rd,Thursday,08:00,75,High (Red),7.2145,80.5935
+Gelioya Main Rd,Friday,07:00,45,Moderate (Orange),7.213,80.593
+Gelioya Main Rd,Friday,08:00,85,High (Red),7.213,80.593
+Gelioya Main Rd,Friday,12:00,30,Low (Green),7.213,80.593
+Gelioya Main Rd,Friday,17:00,90,High (Red),7.213,80.593
+Gelioya Main Rd,Friday,20:00,20,Low (Green),7.213,80.593
+Gampola Rd,Friday,08:00,80,High (Red),7.2115,80.5925
+Peradeniya Rd,Friday,08:00,75,High (Red),7.2145,80.5935
+Gelioya Main Rd,Saturday,07:00,27,Low (Green),7.213,80.593
+Gelioya Main Rd,Saturday,08:00,51,Moderate (Orange),7.213,80.593
+Gelioya Main Rd,Saturday,12:00,18,Low (Green),7.213,80.593
+Gelioya Main Rd,Saturday,17:00,54,Moderate (Orange),7.213,80.593
+Gelioya Main Rd,Saturday,20:00,12,Low (Green),7.213,80.593
+Gampola Rd,Saturday,08:00,48,Moderate (Orange),7.2115,80.5925
+Peradeniya Rd,Saturday,08:00,45,Moderate (Orange),7.2145,80.5935
+Gelioya Main Rd,Sunday,07:00,27,Low (Green),7.213,80.593
+Gelioya Main Rd,Sunday,08:00,51,Moderate (Orange),7.213,80.593
+Gelioya Main Rd,Sunday,12:00,18,Low (Green),7.213,80.593
+Gelioya Main Rd,Sunday,17:00,54,Moderate (Orange),7.213,80.593
+Gelioya Main Rd,Sunday,20:00,12,Low (Green),7.213,80.593
+Gampola Rd,Sunday,08:00,48,Moderate (Orange),7.2115,80.5925
+Peradeniya Rd,Sunday,08:00,45,Moderate (Orange),7.2145,80.5935
