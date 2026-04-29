@@ -35,7 +35,7 @@ def train_model(df):
     temp_df['Time_Numeric'] = temp_df[time_col].apply(extract_hour)
     temp_df['Day_Encoded'] = le.fit_transform(temp_df['Day_Type'])
     X = temp_df[['Day_Encoded', 'Time_Numeric']]
-    y = temp_df['Weight']
+    y = temp_df['Weight'] # AI එක තාමත් Weight එක ඉගෙන ගන්නවා, නමුත් අපි ඒක පෙන්වන්නේ නැහැ
     model = RandomForestRegressor(n_estimators=100, random_state=42)
     model.fit(X.values, y)
     return model, le
@@ -72,51 +72,53 @@ if traffic_data is not None:
     time_24 = st.sidebar.slider("Select Time (Hour)", 6, 22, 17)
     time_display = f"{time_24-12 if time_24 > 12 else time_24}:00 {'PM' if time_24 >= 12 else 'AM'}"
     
-    # 🧠 AI Prediction logic
+    # 🧠 AI Calculation (Internal)
     day_enc = encoder.transform([day_type])[0]
-    ai_pred = model.predict([[day_enc, time_24]])[0]
-    ai_pred = max(0, min(100, ai_pred)) 
+    ai_raw = model.predict([[day_enc, time_24]])[0]
     
+    # 🚦 මෙතනදී අපි අගය Status එකකට හරවනවා
+    if ai_raw >= 66:
+        status_text = "HIGH TRAFFIC"
+        status_color = "error" # Red
+        status_emoji = "🔴"
+    elif ai_raw >= 31:
+        status_text = "MODERATE TRAFFIC"
+        status_color = "warning" # Orange
+        status_emoji = "🟡"
+    else:
+        status_text = "LOW TRAFFIC"
+        status_color = "success" # Green
+        status_emoji = "🟢"
+
     st.sidebar.markdown("---")
-    st.sidebar.subheader("Community Broadcast")
-    st.sidebar.metric("AI Congestion Score", f"{ai_pred:.1f}%")
+    st.sidebar.subheader("Current Traffic Status")
+    # 0-100% පෙන්වන්නේ නැතුව කෙලින්ම Status එක පෙන්වීම
+    st.sidebar.info(f"AI STATUS: {status_emoji} {status_text}")
     
-    # --- 📢 Telegram Sending Logic ---
+    # --- 📢 Telegram Sending Logic (No Percentages) ---
     if st.sidebar.button("📢 Send Update to Telegram"):
         try:
-            if ai_pred >= 66:
-                status = "🔴 HIGH"
-                emoji = "🚗🚕🚙"
-            elif ai_pred >= 31:
-                status = "🟡 MODERATE"
-                emoji = "🚗🚙"
-            else:
-                status = "🟢 LOW"
-                emoji = "✅"
-
             msg = (f"📢 *GELIOYA TRAFFIC REPORT*\n\n"
                    f"🕒 Time: {time_display}\n"
                    f"📅 Day: {day_type}\n"
-                   f"📊 AI Status: {status} {emoji}\n"
-                   f"📈 Congestion: {ai_pred:.1f}%\n\n"
+                   f"📊 AI Status: {status_emoji} {status_text}\n\n"
                    f"🔗 Live Dashboard: {DASHBOARD_URL}")
             
             receivers = [MY_CHAT_ID, GROUP_CHAT_ID]
             for chat_id in receivers:
                 bot.sendMessage(chat_id, msg, parse_mode='Markdown')
                 
-            st.sidebar.success(f"✅ {status} Alert Sent!")
+            st.sidebar.success(f"✅ Alert Sent: {status_text}")
         except Exception as e: 
             st.sidebar.error(f"Telegram Error: {e}")
 
     map_theme = st.sidebar.selectbox("Map Style", ["open-street-map", "carto-positron", "carto-darkmatter"])
     show_parking = st.sidebar.checkbox("Show Parking", value=True)
     
-    # --- 📍 Map Section (Points Only Method) ---
-    st.subheader(f"📍 Traffic Heat-Points: {day_type} at {time_display}")
+    # --- 📍 Map Section (Points Only) ---
+    st.subheader(f"📍 Traffic Heat-Map: {status_text}")
     filtered_traffic = traffic_data[traffic_data['Day_Type'] == day_type].copy()
     
-    # Points පෙන්වීමට scatter_mapbox භාවිතා කිරීම
     fig_map = px.scatter_mapbox(
         filtered_traffic, 
         lat="Latitude", 
@@ -134,24 +136,18 @@ if traffic_data is not None:
         }
     )
 
-    # Bypass Roads (Bypass එක විතරක් ඉරක් විදිහට පෙන්වීම හොඳයි, නැත්නම් ඒක හඳුනාගන්න අමාරුයි)
-    if (ai_pred > 40 or 16 <= time_24 <= 19) and bypass_roads:
+    if (ai_raw > 40 or 16 <= time_24 <= 19) and bypass_roads:
         for road in bypass_roads:
             fig_map.add_trace(go.Scattermapbox(
                 mode="lines", lat=road['lats'], lon=road['lons'],
                 line=dict(width=4, color='#00FFFF', dash='dash'), name="AI Bypass"
             ))
 
-    # Parking Points
     if show_parking and parking_data is not None:
         fig_map.add_trace(go.Scattermapbox(
-            lat=parking_data['Lattitude'], 
-            lon=parking_data['Longitude'],
-            mode='markers+text',
-            marker=dict(size=18, color='#007BFF', symbol='parking'),
-            text="P",
-            textfont=dict(color="white", size=9),
-            name="Parking"
+            lat=parking_data['Lattitude'], lon=parking_data['Longitude'],
+            mode='markers+text', marker=dict(size=18, color='#007BFF', symbol='parking'),
+            text="P", textfont=dict(color="white", size=9), name="Parking"
         ))
 
     fig_map.update_layout(mapbox_style=map_theme, margin={"r":0,"t":0,"l":0,"b":0})
@@ -160,17 +156,19 @@ if traffic_data is not None:
     # --- 📊 Lower Section ---
     col1, col2 = st.columns([1, 1.2])
     with col1:
-        st.subheader("📊 Congestion Analysis")
+        st.subheader("📊 Road Analysis")
         chart_df = filtered_traffic.drop_duplicates(subset=['Road_Segment'])
+        # මෙතනත් Weight පෙන්වන්නේ නැතුව Traffic_Level එකෙන් චාර්ට් එක හදමු
         fig_chart = px.bar(chart_df, x='Road_Segment', y='Weight', color='Traffic_Level',
-                           color_discrete_map={'High (Red)':'red', 'Moderate (Orange)':'orange', 'Low (Green)':'green'})
+                           color_discrete_map={'High (Red)':'red', 'Moderate (Orange)':'orange', 'Low (Green)':'green'},
+                           labels={'Weight': 'Congestion Level'})
         st.plotly_chart(fig_chart, use_container_width=True)
     
     with col2:
         st.subheader("🅿️ Smart Parking Status")
         p_df = parking_data.copy()
         p_df = p_df.rename(columns={'Slot Name': 'Location', 'Capacity estimate': 'Vehicle Capacity'})
-        p_df['Current Status'] = ["Full ❌" if (i * ai_pred) % 10 > 6 else "Available ✅" for i in range(len(p_df))]
+        p_df['Current Status'] = ["Full ❌" if (i * ai_raw) % 10 > 6 else "Available ✅" for i in range(len(p_df))]
         st.dataframe(p_df[['Location', 'Vehicle Capacity', 'Current Status']], use_container_width=True, height=450)
 else:
     st.error("Missing Data Files!")
