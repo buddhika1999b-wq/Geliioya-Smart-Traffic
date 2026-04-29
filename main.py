@@ -13,11 +13,13 @@ GROUP_CHAT_ID = '-1003967636037'
 bot = telepot.Bot(BOT_TOKEN)
 DASHBOARD_URL = "https://gelioya-traffic-ai.streamlit.app"
 
-# --- 🧠 AI Training Function ---
+# --- 🧠 AI Training Function with Practical Logic ---
 @st.cache_resource
 def train_model(df):
     le = LabelEncoder()
     temp_df = df.copy()
+    
+    # Time Numeric බවට පත් කිරීම [cite: 10]
     time_col = [c for c in temp_df.columns if 'Time' in c][0]
     def extract_hour(time_str):
         try:
@@ -26,28 +28,30 @@ def train_model(df):
         except: return 0
     temp_df['Time_Numeric'] = temp_df[time_col].apply(extract_hour)
     
-    # 🚨 Practical Logic Integration [cite: 11]
+    # 🚨 Practical Time Logic (School/Office/Tuition hours) [cite: 11]
     def apply_custom_logic(row):
         h = row['Time_Numeric']
         d = row['Day_Type']
-        if d != 'Sunday' and ((7 <= h <= 8) or (12 <= h <= 14)): return 85 # School
-        if d != 'Sunday' and (16 <= h <= 19): return 90 # Office
-        if d == 'Saturday': return 80 # Tuition
+        if d != 'Sunday' and ((7 <= h <= 8) or (12 <= h <= 14)): return 85 
+        if d != 'Sunday' and (16 <= h <= 19): return 90 
+        if d == 'Saturday': return 80 
         return row['Weight']
 
     temp_df['Weight'] = temp_df.apply(apply_custom_logic, axis=1)
     temp_df['Day_Encoded'] = le.fit_transform(temp_df['Day_Type'])
+    
     X = temp_df[['Day_Encoded', 'Time_Numeric']]
     y = temp_df['Weight']
-    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model = RandomForestRegressor(n_estimators=100, random_state=42) # [cite: 9]
     model.fit(X.values, y)
     return model, le
 
 @st.cache_data
 def load_data():
     try:
-        traffic = pd.read_csv('Weekly_Traffic_Simulation.csv', encoding='latin1') [cite: 4]
-        parking = pd.read_csv('Parking Slot.csv', encoding='latin1') [cite: 5]
+        # Data Acquisition [cite: 4, 5]
+        traffic = pd.read_csv('Weekly_Traffic_Simulation.csv', encoding='latin1')
+        parking = pd.read_csv('Parking Slot.csv', encoding='latin1')
         traffic.columns = traffic.columns.str.strip()
         parking.columns = parking.columns.str.strip()
         return traffic, parking
@@ -74,19 +78,20 @@ if traffic_data is not None:
     ai_pred = model.predict([[day_enc, time_24]])[0]
     
     st.sidebar.markdown("---")
-    st.sidebar.subheader("Community Broadcast") [cite: 18]
+    st.sidebar.subheader("Community Broadcast")
     st.sidebar.info(f"AI Prediction: {ai_pred:.1f}%")
     
+    # Broadcast System [cite: 18]
     if st.sidebar.button("📢 Send Update to Telegram"):
         try:
             status = "🔴 HIGH" if ai_pred > 70 else "🟡 MODERATE" if ai_pred > 40 else "🟢 LOW"
             msg = f"📢 GELIOYA TRAFFIC REPORT\n\n🕒 Time: {time_display}\n📅 Day: {day_type}\n📊 AI Status: {status}\n📈 Congestion: {ai_pred:.1f}%\n\n🔗 {DASHBOARD_URL}"
             for chat_id in [MY_CHAT_ID, GROUP_CHAT_ID]:
                 bot.sendMessage(chat_id, msg, parse_mode='Markdown')
-            st.sidebar.success("✅ Alert Sent!") [cite: 19]
+            st.sidebar.success("✅ Alert Sent!")
         except Exception as e: st.sidebar.error(f"Error: {e}")
 
-    # --- 📍 Map Section ---
+    # --- 📍 Map Section (Plotly Mapbox) [cite: 14] ---
     st.subheader(f"📍 Traffic Forecast & Routing: {day_type} at {time_display}")
     filtered_traffic = traffic_data[traffic_data['Day_Type'] == day_type].copy()
     
@@ -95,25 +100,26 @@ if traffic_data is not None:
         hover_name="Road_Segment", size_max=15, zoom=14.5, height=600,
         center={"lat": 7.213, "lon": 80.593},
         color_discrete_map={'High (Red)':'#FF0000', 'Moderate (Orange)':'#FFA500', 'Low (Green)':'#00FF00'}
-    ) [cite: 14]
+    )
 
-    # --- 🛣️ Manual Bypass Road Data (Solution for No-Show) ---
-    # මම මෙතනට උදාහරණ Coordinates ටිකක් දැම්මා. ඔයාගේ නියම Bypass Coordinates මෙතනට දාන්න.
-    bypass_lat = [7.215, 7.216, 7.218, 7.220] 
-    bypass_lon = [80.590, 80.591, 80.592, 80.593]
+    # --- 🛣️ Manual Bypass Road Logic  ---
+    # මෙතනට ඔයාගේ Bypass පාරේ නියම Coordinates ටික දාන්න (දැනට මම Sample දාලා තියෙන්නේ)
+    bypass_lat = [7.212, 7.215, 7.218, 7.221] 
+    bypass_lon = [80.588, 80.590, 80.592, 80.595]
     
     is_peak = (7 <= time_24 <= 8) or (12 <= time_24 <= 14) or (16 <= time_24 <= 19) or (day_type == 'Saturday')
-    if ai_pred > 40 or is_peak: [cite: 15]
+    
+    if ai_pred > 40 or is_peak:
         fig_map.add_trace(go.Scattermapbox(
             mode="lines+markers",
             lat=bypass_lat, 
             lon=bypass_lon,
             line=dict(width=5, color='#00FFFF'), 
             name="AI Recommended Bypass",
-            hoverinfo='text',
-            text="AI Recommended Bypass Road"
+            text="Recommended Route to Avoid Congestion"
         ))
 
+    # Infrastructure Visualization (Parking) [cite: 5]
     if show_parking and parking_data is not None:
         fig_map.add_trace(go.Scattermapbox(
             lat=parking_data['Lattitude'], lon=parking_data['Longitude'],
@@ -136,6 +142,7 @@ if traffic_data is not None:
     with col2:
         st.subheader("🅿️ Smart Parking Status")
         p_df = parking_data.copy().rename(columns={'Slot Name': 'Location', 'Capacity estimate': 'Vehicle Capacity'})
+        # Dynamic Parking Logic
         p_df['Current Status'] = ["Full ❌" if (i * ai_pred) % 10 > (3 if ai_pred > 50 else 8) else "Available ✅" for i in range(len(p_df))]
         st.dataframe(p_df[['Location', 'Vehicle Capacity', 'Current Status']], use_container_width=True, height=450)
 else:
