@@ -21,7 +21,7 @@ GROUP_CHAT_ID = '-1003967636037' # ඔයාගේ අලුත් Supergroup ID
 bot = telepot.Bot(BOT_TOKEN)
 DASHBOARD_URL = "https://gelioya-traffic-ai.streamlit.app"
 
-# --- 🧠 AI Training Function (Updated for Time_Slot support) ---
+# --- 🧠 AI Training Function ---
 @st.cache_resource
 def train_model(df):
     le = LabelEncoder()
@@ -40,7 +40,6 @@ def train_model(df):
 
     def extract_hour(time_str):
         try:
-            # "06:00-10:40 AM" වැනි format එකකින් මුල් පැය (06) වෙන් කර ගැනීම
             hour_part = str(time_str).split(':')[0]
             hour = "".join(filter(str.isdigit, hour_part))
             return int(hour) if hour else 0
@@ -59,6 +58,7 @@ def train_model(df):
 @st.cache_data
 def load_data():
     try:
+        # GitHub එකේ නම Weekly_Traffic_Simulation.csv ලෙස තිබිය යුතුය
         traffic = pd.read_csv('Weekly_Traffic_Simulation.csv', encoding='latin1')
         parking = pd.read_csv('Parking Slot.csv', encoding='latin1')
         traffic.columns = traffic.columns.str.strip()
@@ -92,7 +92,9 @@ if traffic_data is not None:
     
     if model is not None:
         day_enc = encoder.transform([day_type])[0]
-        ai_pred = model.predict([[day_enc, time_24]])[0]
+        # AI prediction එක 100% scale එකකට පරිවර්තනය කිරීම
+        raw_pred = model.predict([[day_enc, time_24]])[0]
+        ai_pred = raw_pred * 33.3 
         
         st.sidebar.markdown("---")
         st.sidebar.subheader("Community Broadcast")
@@ -121,7 +123,6 @@ if traffic_data is not None:
     
     fig_map = go.Figure()
 
-    # පාරවල් රේඛා (Lines) ලෙස ඇඳීම
     for road_name in filtered_traffic['Road_Segment'].unique():
         road_subset = filtered_traffic[filtered_traffic['Road_Segment'] == road_name]
         t_level = road_subset['Traffic_Level'].iloc[0]
@@ -138,7 +139,6 @@ if traffic_data is not None:
             text=f"{road_name}: {t_level}"
         ))
 
-    # Bypass Roads
     if (ai_pred > 40 or 16 <= time_24 <= 19) and bypass_roads:
         for road in bypass_roads:
             fig_map.add_trace(go.Scattermapbox(
@@ -146,7 +146,6 @@ if traffic_data is not None:
                 line=dict(width=4, color='#00FFFF', dash='dash'), name="AI Bypass Route"
             ))
 
-    # Parking Markers
     if show_parking and parking_data is not None:
         fig_map.add_trace(go.Scattermapbox(
             lat=parking_data['Lattitude'], 
