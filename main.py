@@ -20,7 +20,7 @@ except ImportError:
 # --- 🤖 Telegram Bot Configuration ---
 BOT_TOKEN = '8602459951:AAEQif4JnTDQjl7gvnVGv0pEw-tXn3b6DKs'
 MY_CHAT_ID = '5365836212'      # ඔයාගේ Personal ID
-GROUP_CHAT_ID = '-5078655520'  # ඔයා දැන් හොයාගත්ත Group ID
+GROUP_CHAT_ID = '-1003967636037'
 bot = telepot.Bot(BOT_TOKEN)
 DASHBOARD_URL = "https://gelioya-traffic-ai.streamlit.app"
 
