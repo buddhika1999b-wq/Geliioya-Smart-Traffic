@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import telepot
+import requests
 from telepot.loop import MessageLoop
 from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton
 from sklearn.ensemble import RandomForestRegressor
@@ -18,7 +19,8 @@ except ImportError:
 
 # --- 🤖 Telegram Bot Configuration ---
 BOT_TOKEN = '8602459951:AAEQif4JnTDQjl7gvnVGv0pEw-tXn3b6DKs'
-MY_CHAT_ID = '5365836212'
+MY_CHAT_ID = '5365836212'      # ඔයාගේ Personal ID
+GROUP_CHAT_ID = '-5078655520'  # ඔයා දැන් හොයාගත්ත Group ID
 bot = telepot.Bot(BOT_TOKEN)
 DASHBOARD_URL = "https://gelioya-traffic-ai.streamlit.app"
 
@@ -80,18 +82,26 @@ if traffic_data is not None:
     st.sidebar.subheader("Community Broadcast")
     st.sidebar.info(f"AI Prediction: {ai_pred:.1f}%")
     
+    # --- 📢 Telegram Sending Logic (Updated for Group & Personal) ---
     if st.sidebar.button("📢 Send Update to Telegram"):
         try:
             status = "🔴 HIGH" if ai_pred > 70 else "🟡 MODERATE" if ai_pred > 40 else "🟢 LOW"
             msg = (f"📢 *GELIOYA TRAFFIC REPORT*\n\n"
-                   f"🕒 Time: {time_display}\n"
-                   f"📅 Day: {day_type}\n"
-                   f"📊 AI Status: {status}\n"
-                   f"📈 Score: {ai_pred:.1f}%\n\n"
-                   f"🔗 View Map: {DASHBOARD_URL}")
-            bot.sendMessage(MY_CHAT_ID, msg, parse_mode='Markdown')
-            st.sidebar.success("✅ Alert Sent!")
-        except: st.sidebar.error("Telegram Error!")
+                   f"🕒 *Time:* {time_display}\n"
+                   f"📅 *Day:* {day_type}\n"
+                   f"📊 *AI Status:* {status}\n"
+                   f"📈 *Congestion:* {ai_pred:.1f}%\n\n"
+                   f"🔗 *Live Dashboard:* {DASHBOARD_URL}")
+            
+            # IDs දෙකටම ලූපයක් හරහා මැසේජ් එක යවනවා
+            receivers = [MY_CHAT_ID, GROUP_CHAT_ID]
+            for chat_id in receivers:
+                # telepot එකෙන් හෝ කෙලින්ම API එකෙන් යැවිය හැක
+                bot.sendMessage(chat_id, msg, parse_mode='Markdown')
+                
+            st.sidebar.success("✅ Alert Sent to Group & Admin!")
+        except Exception as e: 
+            st.sidebar.error(f"Telegram Error: {e}")
 
     map_theme = st.sidebar.selectbox("Map Style", ["open-street-map", "carto-positron", "carto-darkmatter"])
     show_parking = st.sidebar.checkbox("Show Parking", value=True)
@@ -107,7 +117,6 @@ if traffic_data is not None:
         color_discrete_map={'High (Red)':'#FF0000', 'Moderate (Orange)':'#FFA500', 'Low (Green)':'#00FF00'}
     )
 
-    # Bypass Roads
     if (ai_pred > 40 or 16 <= time_24 <= 19) and bypass_roads:
         for road in bypass_roads:
             fig_map.add_trace(go.Scattermapbox(
@@ -115,7 +124,6 @@ if traffic_data is not None:
                 line=dict(width=4, color='#00FFFF'), name="AI Bypass"
             ))
 
-    # --- 🅿️ Parking Update ---
     if show_parking and parking_data is not None:
         fig_map.add_trace(go.Scattermapbox(
             lat=parking_data['Lattitude'], 
@@ -133,7 +141,7 @@ if traffic_data is not None:
     fig_map.update_layout(mapbox_style=map_theme, margin={"r":0,"t":0,"l":0,"b":0})
     st.plotly_chart(fig_map, use_container_width=True)
 
-    # --- 📊 Lower Section (Matching your screenshot) ---
+    # --- 📊 Lower Section ---
     col1, col2 = st.columns([1, 1.2])
     with col1:
         st.subheader("📊 Congestion Analysis")
@@ -144,14 +152,11 @@ if traffic_data is not None:
     with col2:
         st.subheader("🅿️ Smart Parking Status")
         p_df = parking_data.copy()
-        
-        # 🛠️ සැබෑ Vehicle Capacity එක පෙන්වීමට නිවැරදි Column එක Rename කිරීම
         p_df = p_df.rename(columns={
             'Slot Name': 'Location',
-            'Capacity estimate': 'Vehicle Capacity'  # Coordinates වෙනුවට සැබෑ Capacity එක දැම්මා
+            'Capacity estimate': 'Vehicle Capacity'
         })
 
-        # 🎯 Dynamic Status Logic
         def get_current_status(prediction, index):
             threshold = 50 
             if prediction > threshold:
@@ -160,8 +165,6 @@ if traffic_data is not None:
                 return "Full ❌" if (index * prediction) % 10 > 8 else "Available ✅"
         
         p_df['Current Status'] = [get_current_status(ai_pred, i) for i in range(len(p_df))]
-        
-        # ටේබල් එකේ දැන් Location, Vehicle Capacity (Number) සහ Status පෙන්වනවා
         st.dataframe(p_df[['Location', 'Vehicle Capacity', 'Current Status']], use_container_width=True, height=450)
 else:
     st.error("Missing Data Files!")
