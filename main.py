@@ -59,7 +59,7 @@ def train_model(df):
 @st.cache_data
 def load_data():
     try:
-        traffic = pd.read_csv('Weekly_Traffic_Simulation(1).csv', encoding='latin1')
+        traffic = pd.read_csv('Weekly_Traffic_Simulation.csv', encoding='latin1')
         parking = pd.read_csv('Parking Slot.csv', encoding='latin1')
         traffic.columns = traffic.columns.str.strip()
         parking.columns = parking.columns.str.strip()
