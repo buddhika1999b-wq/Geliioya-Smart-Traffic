@@ -21,11 +21,13 @@ GROUP_CHAT_ID = '-1003967636037'
 bot = telepot.Bot(BOT_TOKEN)
 DASHBOARD_URL = "https://gelioya-traffic-ai.streamlit.app"
 
-# --- 🧠 AI Training Function ---
+# --- 🧠 AI Training Function with Integrated Time-Logic ---
 @st.cache_resource
 def train_model(df):
     le = LabelEncoder()
     temp_df = df.copy()
+    
+    # 1. Time Numeric බවට පත් කිරීම
     time_col = [c for c in temp_df.columns if 'Time' in c][0]
     def extract_hour(time_str):
         try:
@@ -33,6 +35,26 @@ def train_model(df):
             return int(hour) if hour else 0
         except: return 0
     temp_df['Time_Numeric'] = temp_df[time_col].apply(extract_hour)
+    
+    # 2. 🚨 ඔයා කියපු Practical Time Logic එක කෙලින්ම Data වලට Apply කිරීම
+    # මේකෙන් තමයි CMD එක නැතුවම AI එකට අලුත් අගයන් උගන්වන්නේ
+    def apply_custom_logic(row):
+        h = row['Time_Numeric']
+        d = row['Day_Type']
+        # School Time (Weekdays)
+        if d != 'Sunday' and ((7 <= h <= 8) or (12 <= h <= 14)):
+            return 85
+        # Office Time (Weekdays)
+        if d != 'Sunday' and (16 <= h <= 19):
+            return 90
+        # Tuition Time (Saturday)
+        if d == 'Saturday':
+            return 80
+        return row['Weight']
+
+    temp_df['Weight'] = temp_df.apply(apply_custom_logic, axis=1)
+    
+    # 3. Model Training
     temp_df['Day_Encoded'] = le.fit_transform(temp_df['Day_Type'])
     X = temp_df[['Day_Encoded', 'Time_Numeric']]
     y = temp_df['Weight']
@@ -43,10 +65,13 @@ def train_model(df):
 @st.cache_data
 def load_data():
     try:
+        # GitHub එකේ තියෙන පරණ CSV එකම කියවනවා
         traffic = pd.read_csv('Weekly_Traffic_Simulation.csv', encoding='latin1')
         parking = pd.read_csv('Parking Slot.csv', encoding='latin1')
         traffic.columns = traffic.columns.str.strip()
         parking.columns = parking.columns.str.strip()
+        
+        # Bypass Roads Loading
         bypass_roads = []
         shp_path = "Gelioya_BypassRd.shp" 
         if SHP_SUPPORT and os.path.exists(shp_path):
@@ -64,6 +89,7 @@ st.title("🚦 Gelioya Smart Traffic AI Dashboard")
 traffic_data, parking_data, bypass_roads = load_data()
 
 if traffic_data is not None:
+    # මෙතනදී AI එක පරණ CSV එක අරගෙන අලුත් Logic එකට අනුව ඔටෝ Update වෙනවා
     model, encoder = train_model(traffic_data)
 
     # Sidebar Controls
@@ -79,7 +105,6 @@ if traffic_data is not None:
     st.sidebar.subheader("Community Broadcast")
     st.sidebar.info(f"AI Prediction: {ai_pred:.1f}%")
     
-    # --- 📢 Telegram Sending Logic ---
     if st.sidebar.button("📢 Send Update to Telegram"):
         try:
             status = "🔴 HIGH" if ai_pred > 70 else "🟡 MODERATE" if ai_pred > 40 else "🟢 LOW"
@@ -89,18 +114,12 @@ if traffic_data is not None:
                    f"📊 AI Status: {status}\n"
                    f"📈 Congestion: {ai_pred:.1f}%\n\n"
                    f"🔗 Live Dashboard: {DASHBOARD_URL}")
-            
-            receivers = [MY_CHAT_ID, GROUP_CHAT_ID]
-            for chat_id in receivers:
+            for chat_id in [MY_CHAT_ID, GROUP_CHAT_ID]:
                 bot.sendMessage(chat_id, msg, parse_mode='Markdown')
-            st.sidebar.success("✅ Alert Sent to Group & Admin!")
-        except Exception as e: 
-            st.sidebar.error(f"Telegram Error: {e}")
+            st.sidebar.success("✅ Alert Sent!")
+        except Exception as e: st.sidebar.error(f"Error: {e}")
 
-    map_theme = st.sidebar.selectbox("Map Style", ["open-street-map", "carto-positron", "carto-darkmatter"])
-    show_parking = st.sidebar.checkbox("Show Parking", value=True)
-    
-    # --- 📍 Map Section (Bypass Logic Updated) ---
+    # --- 📍 Map Section (Dynamic Bypass Logic) ---
     st.subheader(f"📍 Traffic Forecast & Routing: {day_type} at {time_display}")
     filtered_traffic = traffic_data[traffic_data['Day_Type'] == day_type].copy()
     
@@ -111,50 +130,32 @@ if traffic_data is not None:
         color_discrete_map={'High (Red)':'#FF0000', 'Moderate (Orange)':'#FFA500', 'Low (Green)':'#00FF00'}
     )
 
-    # --- 🚦 New Practical Bypass Logic ---
-    is_school_time = (7 <= time_24 <= 8) or (12 <= time_24 <= 14)
-    is_office_time = (16 <= time_24 <= 19)
-    is_tuition_day = (day_type == 'Saturday')
-    
-    # AI එක 40% ට වඩා වැඩි වුණොත් හෝ ඔයා කියපු විශේෂිත වෙලාවන් වලදී පාරවල් පෙන්වයි
-    if (ai_pred > 40 or is_school_time or is_office_time or is_tuition_day) and bypass_roads:
+    # Bypass පාරවල් පෙන්වන ලොජික් එක (Dashboard එක ඇතුලෙම)
+    is_peak = (7 <= time_24 <= 8) or (12 <= time_24 <= 14) or (16 <= time_24 <= 19) or (day_type == 'Saturday')
+    if (ai_pred > 40 or is_peak) and bypass_roads:
         for road in bypass_roads:
             fig_map.add_trace(go.Scattermapbox(
                 mode="lines", lat=road['lats'], lon=road['lons'],
                 line=dict(width=4, color='#00FFFF'), name="AI Bypass Active"
             ))
 
-    if show_parking and parking_data is not None:
-        fig_map.add_trace(go.Scattermapbox(
-            lat=parking_data['Lattitude'], lon=parking_data['Longitude'],
-            mode='markers+text', marker=dict(size=15, color='#007BFF'),
-            text="P", textposition="middle center", textfont=dict(size=10, color="white"),
-            hoverinfo='text', hovertext=parking_data['Slot Name'], name="Parking"
-        ))
-
-    fig_map.update_layout(mapbox_style=map_theme, margin={"r":0,"t":0,"l":0,"b":0})
+    fig_map.update_layout(mapbox_style="open-street-map", margin={"r":0,"t":0,"l":0,"b":0})
     st.plotly_chart(fig_map, use_container_width=True)
 
-    # --- 📊 Lower Section (Graph & Parking Fixed) ---
+    # --- 📊 Lower Section (Graph & Parking) ---
     col1, col2 = st.columns([1, 1.2])
     with col1:
         st.subheader("📊 Congestion Analysis")
-        fig_chart = px.bar(filtered_traffic, x='Road_Segment', y='Weight', color='Traffic_Level',
-                           color_discrete_map={'High (Red)':'red', 'Moderate (Orange)':'orange', 'Low (Green)':'green'})
+        # Graph එක AI Prediction එකට අනුව වෙනස් වීම
+        fig_chart = px.bar(filtered_traffic, x='Road_Segment', y=[ai_pred]*len(filtered_traffic), 
+                           labels={'y':'Congestion %'},
+                           color_discrete_sequence=['red' if ai_pred > 70 else 'orange' if ai_pred > 40 else 'green'])
         st.plotly_chart(fig_chart, use_container_width=True)
     
     with col2:
         st.subheader("🅿️ Smart Parking Status")
         p_df = parking_data.copy().rename(columns={'Slot Name': 'Location', 'Capacity estimate': 'Vehicle Capacity'})
-        
-        def get_current_status(prediction, index):
-            threshold = 50 
-            if prediction > threshold:
-                return "Full ❌" if (index * prediction) % 10 > 3 else "Available ✅"
-            else:
-                return "Full ❌" if (index * prediction) % 10 > 8 else "Available ✅"
-        
-        p_df['Current Status'] = [get_current_status(ai_pred, i) for i in range(len(p_df))]
+        p_df['Current Status'] = ["Full ❌" if (i * ai_pred) % 10 > (3 if ai_pred > 50 else 8) else "Available ✅" for i in range(len(p_df))]
         st.dataframe(p_df[['Location', 'Vehicle Capacity', 'Current Status']], use_container_width=True, height=450)
 else:
     st.error("Missing Data Files!")
