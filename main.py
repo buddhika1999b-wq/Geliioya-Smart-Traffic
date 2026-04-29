@@ -43,6 +43,7 @@ def train_model(df):
 @st.cache_data
 def load_data():
     try:
+        # මෙතන පරණ නමම පාවිච්චි කරලා තියෙනවා
         traffic = pd.read_csv('Weekly_Traffic_Simulation.csv', encoding='latin1')
         parking = pd.read_csv('Parking Slot.csv', encoding='latin1')
         traffic.columns = traffic.columns.str.strip()
@@ -72,37 +73,38 @@ if traffic_data is not None:
     time_24 = st.sidebar.slider("Select Time (Hour)", 6, 22, 17)
     time_display = f"{time_24-12 if time_24 > 12 else time_24}:00 {'PM' if time_24 >= 12 else 'AM'}"
     
+    # 🧠 AI Prediction logic with the new range scaling
     day_enc = encoder.transform([day_type])[0]
-    raw_pred = model.predict([[day_enc, time_24]])[0]
-    
-    # 🚨 AI Scaling Fix: Weight එක 0-100 ප්‍රතිශතයකට හැරවීම (Normalizing)
-    # CSV එකේ උපරිම Weight එක 100 ලෙස සලකා ගණනය කරයි
-    ai_pred = (raw_pred / traffic_data['Weight'].max()) * 100
-    if ai_pred > 100: ai_pred = 100
+    ai_pred = model.predict([[day_enc, time_24]])[0]
+    ai_pred = max(0, min(100, ai_pred)) # අගය 0-100 අතර තබා ගැනීම
     
     st.sidebar.markdown("---")
     st.sidebar.subheader("Community Broadcast")
-    st.sidebar.info(f"AI Prediction Score: {ai_pred:.1f}%")
+    st.sidebar.metric("AI Congestion Score", f"{ai_pred:.1f}%")
     
-    # --- 📢 Telegram Sending Logic (With Status Fix) ---
+    # --- 📢 Telegram Sending Logic (Updated with new Status Ranges) ---
     if st.sidebar.button("📢 Send Update to Telegram"):
         try:
-            # 🚦 Status එක ප්‍රතිශතය අනුව තීරණය කිරීම
-            if ai_pred >= 75:
-                status = "🔴 HIGH TRAFFIC"
-            elif ai_pred >= 40:
-                status = "🟡 MODERATE TRAFFIC"
+            # අපි කතා කරගත්ත අලුත් Ranges (0-30, 31-65, 66-100)
+            if ai_pred >= 66:
+                status = "🔴 HIGH"
+                emoji = "🚗🚕🚙"
+            elif ai_pred >= 31:
+                status = "🟡 MODERATE"
+                emoji = "🚗🚙"
             else:
-                status = "🟢 LOW TRAFFIC"
+                status = "🟢 LOW"
+                emoji = "✅"
 
             msg = (f"📢 *GELIOYA TRAFFIC REPORT*\n\n"
                    f"🕒 Time: {time_display}\n"
                    f"📅 Day: {day_type}\n"
-                   f"📊 AI Status: {status}\n"
-                   f"📈 Congestion Score: {ai_pred:.1f}%\n\n"
-                   f"🔗 Live Map: {DASHBOARD_URL}")
+                   f"📊 AI Status: {status} {emoji}\n"
+                   f"📈 Congestion: {ai_pred:.1f}%\n\n"
+                   f"🔗 Live Dashboard: {DASHBOARD_URL}")
             
-            for chat_id in [MY_CHAT_ID, GROUP_CHAT_ID]:
+            receivers = [MY_CHAT_ID, GROUP_CHAT_ID]
+            for chat_id in receivers:
                 bot.sendMessage(chat_id, msg, parse_mode='Markdown')
                 
             st.sidebar.success(f"✅ {status} Alert Sent!")
@@ -112,19 +114,17 @@ if traffic_data is not None:
     map_theme = st.sidebar.selectbox("Map Style", ["open-street-map", "carto-positron", "carto-darkmatter"])
     show_parking = st.sidebar.checkbox("Show Parking", value=True)
     
-    # --- 📍 Map Section (Final Line & Overlap Fix) ---
+    # --- 📍 Map Section (Fixed for proper line drawing) ---
     st.subheader(f"📍 Traffic Forecast & Routing: {day_type} at {time_display}")
     filtered_traffic = traffic_data[traffic_data['Day_Type'] == day_type].copy()
     
     fig_map = go.Figure()
 
-    # සෑම පාරක්ම වෙන වෙනම අඳිමු (ඉරි පැටලීම වැළැක්වීමට)
+    # පාරවල් වල රේඛා නිවැරදිව ඇඳීම
     for road_name in filtered_traffic['Road_Segment'].unique():
         road_subset = filtered_traffic[filtered_traffic['Road_Segment'] == road_name].copy()
-        
-        # ⚠️ Coordinates එකම තැන තියෙන ඒවා අයින් කර Sort කිරීම (Overlapping Fix)
         road_subset = road_subset.drop_duplicates(subset=['Latitude', 'Longitude'])
-        road_subset = road_subset.sort_values(by=['Latitude'])
+        road_subset = road_subset.sort_values(by=['Latitude']) # දිග ඉරි වැළැක්වීමට
 
         t_level = str(road_subset['Traffic_Level'].iloc[0])
         line_color = '#FF0000' if 'High' in t_level else '#FFA500' if 'Moderate' in t_level else '#00FF00'
@@ -144,27 +144,29 @@ if traffic_data is not None:
         for road in bypass_roads:
             fig_map.add_trace(go.Scattermapbox(
                 mode="lines", lat=road['lats'], lon=road['lons'],
-                line=dict(width=4, color='#00FFFF', dash='dash'), name="AI Bypass Route"
+                line=dict(width=4, color='#00FFFF', dash='dash'), name="AI Bypass"
             ))
 
     if show_parking and parking_data is not None:
         fig_map.add_trace(go.Scattermapbox(
-            lat=parking_data['Lattitude'], lon=parking_data['Longitude'],
-            mode='markers+text', marker=dict(size=18, color='#007BFF', symbol='parking'),
-            text="P", textfont=dict(color="white", size=9), name="Parking"
+            lat=parking_data['Lattitude'], 
+            lon=parking_data['Longitude'],
+            mode='markers+text',
+            marker=dict(size=18, color='#007BFF', symbol='parking'),
+            text="P",
+            textfont=dict(color="white", size=9),
+            name="Parking"
         ))
 
-    fig_map.update_layout(
-        mapbox=dict(style=map_theme, center={"lat": 7.214, "lon": 80.598}, zoom=15),
-        margin={"r":0,"t":0,"l":0,"b":0}, height=600
-    )
+    fig_map.update_layout(mapbox=dict(style=map_theme, center={"lat": 7.214, "lon": 80.598}, zoom=15), margin={"r":0,"t":0,"l":0,"b":0}, height=600)
     st.plotly_chart(fig_map, use_container_width=True)
 
     # --- 📊 Lower Section ---
     col1, col2 = st.columns([1, 1.2])
     with col1:
         st.subheader("📊 Congestion Analysis")
-        chart_df = filtered_traffic.drop_duplicates('Road_Segment')
+        # එකම පාරේ ලකුණු කිහිපයක් තිබුණත් බාර් චාර්ට් එකට එකක් ගැනීම
+        chart_df = filtered_traffic.drop_duplicates(subset=['Road_Segment'])
         fig_chart = px.bar(chart_df, x='Road_Segment', y='Weight', color='Traffic_Level',
                            color_discrete_map={'High (Red)':'red', 'Moderate (Orange)':'orange', 'Low (Green)':'green'})
         st.plotly_chart(fig_chart, use_container_width=True)
@@ -173,7 +175,9 @@ if traffic_data is not None:
         st.subheader("🅿️ Smart Parking Status")
         p_df = parking_data.copy()
         p_df = p_df.rename(columns={'Slot Name': 'Location', 'Capacity estimate': 'Vehicle Capacity'})
-        p_df['Current Status'] = ["Full ❌" if (i * ai_pred) % 10 > 5 else "Available ✅" for i in range(len(p_df))]
+
+        # පරාසයට අනුව Parking Status එක වෙනස් කිරීම
+        p_df['Current Status'] = ["Full ❌" if (i * ai_pred) % 10 > 6 else "Available ✅" for i in range(len(p_df))]
         st.dataframe(p_df[['Location', 'Vehicle Capacity', 'Current Status']], use_container_width=True, height=450)
 else:
     st.error("Missing Data Files!")
