@@ -36,7 +36,7 @@ def train_model(df):
         except: return 0
     temp_df['Time_Numeric'] = temp_df[time_col].apply(extract_hour)
     
-    # 🚨 Practical Time Logic (Injecting into training data)
+    # 🚨 Practical Time Logic
     def apply_custom_logic(row):
         h = row['Time_Numeric']
         d = row['Day_Type']
@@ -63,14 +63,22 @@ def load_data():
         parking.columns = parking.columns.str.strip()
         
         bypass_roads = []
-        shp_path = "Gelioya_BypassRd.shp" 
-        if SHP_SUPPORT and os.path.exists(shp_path):
-            sf = shapefile.Reader(shp_path)
-            for shape in sf.shapes():
-                lons, lats = zip(*shape.points)
-                bypass_roads.append({'lats': list(lats), 'lons': list(lons)})
+        # --- 📍 අලුත් Shapefile නම මෙතැනට දැම්මා ---
+        shp_path = "GOyaBpssRd.shp" 
+        
+        if SHP_SUPPORT:
+            if os.path.exists(shp_path):
+                sf = shapefile.Reader(shp_path)
+                for shape in sf.shapes():
+                    lons, lats = zip(*shape.points)
+                    bypass_roads.append({'lats': list(lats), 'lons': list(lons)})
+            else:
+                st.sidebar.error(f"❌ File Not Found: {shp_path}")
+                
         return traffic, parking, bypass_roads
-    except: return None, None, []
+    except Exception as e:
+        st.error(f"Loading Error: {e}")
+        return None, None, []
 
 # --- 🖥️ User Interface ---
 st.set_page_config(page_title="Gelioya Smart Traffic AI", layout="wide")
@@ -116,16 +124,16 @@ if traffic_data is not None:
         color_discrete_map={'High (Red)':'#FF0000', 'Moderate (Orange)':'#FFA500', 'Low (Green)':'#00FF00'}
     )
 
-    # 🚦 Bypass Roads Logic (Visible during Peak times or High prediction)
+    # 🚦 Bypass Roads Logic
     is_peak = (7 <= time_24 <= 8) or (12 <= time_24 <= 14) or (16 <= time_24 <= 19) or (day_type == 'Saturday')
     if (ai_pred > 40 or is_peak) and bypass_roads:
         for road in bypass_roads:
             fig_map.add_trace(go.Scattermapbox(
                 mode="lines", lat=road['lats'], lon=road['lons'],
-                line=dict(width=4, color='#00FFFF'), name="AI Bypass Active"
+                line=dict(width=5, color='#00FFFF'), name="AI Bypass Active"
             ))
 
-    # 🅿️ Parking Markers on Map
+    # 🅿️ Parking Markers
     if show_parking and parking_data is not None:
         fig_map.add_trace(go.Scattermapbox(
             lat=parking_data['Lattitude'], lon=parking_data['Longitude'],
@@ -141,7 +149,6 @@ if traffic_data is not None:
     col1, col2 = st.columns([1, 1.2])
     with col1:
         st.subheader("📊 Congestion Analysis")
-        # Graph එක AI Prediction එකට අනුව dynamic වෙන්න හැදුවා
         fig_chart = px.bar(filtered_traffic, x='Road_Segment', y='Weight', color='Traffic_Level',
                            color_discrete_map={'High (Red)':'red', 'Moderate (Orange)':'orange', 'Low (Green)':'green'})
         st.plotly_chart(fig_chart, use_container_width=True)
