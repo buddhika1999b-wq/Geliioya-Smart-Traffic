@@ -17,7 +17,7 @@ except ImportError:
 # --- 🤖 Telegram Bot Configuration ---
 BOT_TOKEN = '8602459951:AAEQif4JnTDQjl7gvnVGv0pEw-tXn3b6DKs'
 MY_CHAT_ID = '5365836212'
-GROUP_CHAT_ID = '-1003967636037' # ඔයාගේ අලුත් Supergroup ID එක
+GROUP_CHAT_ID = '-1003967636037' 
 bot = telepot.Bot(BOT_TOKEN)
 DASHBOARD_URL = "https://gelioya-traffic-ai.streamlit.app"
 
@@ -27,7 +27,6 @@ def train_model(df):
     le = LabelEncoder()
     temp_df = df.copy()
     
-    # CSV එකේ ඇති Time හෝ Time_Slot කොලම් එක සොයා ගැනීම
     time_col = None
     for col in ['Time_Slot', 'Time', 'time', 'Time_slot']:
         if col in temp_df.columns:
@@ -35,7 +34,6 @@ def train_model(df):
             break
             
     if time_col is None:
-        st.error("Error: Time/Time_Slot column not found in CSV!")
         return None, None
 
     def extract_hour(time_str):
@@ -58,7 +56,7 @@ def train_model(df):
 @st.cache_data
 def load_data():
     try:
-        # GitHub එකේ නම Weekly_Traffic_Simulation.csv ලෙස තිබිය යුතුය
+        # File path must match your GitHub file name
         traffic = pd.read_csv('Weekly_Traffic_Simulation.csv', encoding='latin1')
         parking = pd.read_csv('Parking Slot.csv', encoding='latin1')
         traffic.columns = traffic.columns.str.strip()
@@ -90,9 +88,9 @@ if traffic_data is not None:
     time_24 = st.sidebar.slider("Select Time (Hour)", 6, 22, 17)
     time_display = f"{time_24-12 if time_24 > 12 else time_24}:00 {'PM' if time_24 >= 12 else 'AM'}"
     
+    ai_pred = 0 # Default value
     if model is not None:
         day_enc = encoder.transform([day_type])[0]
-        # AI prediction එක 100% scale එකකට පරිවර්තනය කිරීම
         raw_pred = model.predict([[day_enc, time_24]])[0]
         ai_pred = raw_pred * 33.3 
         
@@ -117,28 +115,40 @@ if traffic_data is not None:
     map_theme = st.sidebar.selectbox("Map Style", ["open-street-map", "carto-positron", "carto-darkmatter"])
     show_parking = st.sidebar.checkbox("Show Parking", value=True)
     
-    # --- 📍 Map Section ---
+    # --- 📍 Map Section (Final Fix) ---
     st.subheader(f"📍 Traffic Forecast & Routing: {day_type} at {time_display}")
-    filtered_traffic = traffic_data[traffic_data['Day_Type'] == day_type].copy()
     
+    # පාරවල් වල රේඛා හරියට ඇඳෙන්න Sort කිරීම
+    filtered_traffic = traffic_data[traffic_data['Day_Type'] == day_type].copy()
+    filtered_traffic = filtered_traffic.sort_values(by=['Road_Segment', 'Latitude'])
+
     fig_map = go.Figure()
 
+    # සෑම පාරක්ම (Segment) වෙන වෙනම Lines ලෙස ඇඳීම
     for road_name in filtered_traffic['Road_Segment'].unique():
         road_subset = filtered_traffic[filtered_traffic['Road_Segment'] == road_name]
-        t_level = road_subset['Traffic_Level'].iloc[0]
-        line_color = '#FF0000' if 'High' in t_level else '#FFA500' if 'Moderate' in t_level else '#00FF00'
+        
+        # Traffic Level එක අනුව වර්ණය තෝරාගැනීම
+        t_level = str(road_subset['Traffic_Level'].iloc[0])
+        if 'High' in t_level:
+            line_color = '#FF0000' # Red
+        elif 'Moderate' in t_level:
+            line_color = '#FFA500' # Orange
+        else:
+            line_color = '#00FF00' # Green
         
         fig_map.add_trace(go.Scattermapbox(
             mode="lines+markers",
             lat=road_subset['Latitude'],
             lon=road_subset['Longitude'],
-            line=dict(width=5, color=line_color),
-            marker=dict(size=7, color=line_color),
+            line=dict(width=6, color=line_color),
+            marker=dict(size=8, color=line_color),
             name=road_name,
             hoverinfo='text',
             text=f"{road_name}: {t_level}"
         ))
 
+    # Bypass Roads Suggestion
     if (ai_pred > 40 or 16 <= time_24 <= 19) and bypass_roads:
         for road in bypass_roads:
             fig_map.add_trace(go.Scattermapbox(
@@ -146,6 +156,7 @@ if traffic_data is not None:
                 line=dict(width=4, color='#00FFFF', dash='dash'), name="AI Bypass Route"
             ))
 
+    # Parking Points
     if show_parking and parking_data is not None:
         fig_map.add_trace(go.Scattermapbox(
             lat=parking_data['Lattitude'], 
@@ -161,8 +172,13 @@ if traffic_data is not None:
         ))
 
     fig_map.update_layout(
-        mapbox=dict(style=map_theme, center={"lat": 7.213, "lon": 80.593}, zoom=14.5),
-        margin={"r":0,"t":0,"l":0,"b":0}, height=600
+        mapbox=dict(
+            style=map_theme, 
+            center={"lat": 7.214, "lon": 80.598}, # Gelioya Junction
+            zoom=15
+        ),
+        margin={"r":0,"t":0,"l":0,"b":0}, height=600,
+        showlegend=True
     )
     st.plotly_chart(fig_map, use_container_width=True)
 
@@ -170,7 +186,7 @@ if traffic_data is not None:
     col1, col2 = st.columns([1, 1.2])
     with col1:
         st.subheader("📊 Congestion Analysis")
-        fig_chart = px.bar(filtered_traffic, x='Road_Segment', y='Weight', color='Traffic_Level',
+        fig_chart = px.bar(filtered_traffic.drop_duplicates('Road_Segment'), x='Road_Segment', y='Weight', color='Traffic_Level',
                            color_discrete_map={'High (Red)':'red', 'Moderate (Orange)':'orange', 'Low (Green)':'green'})
         st.plotly_chart(fig_chart, use_container_width=True)
     
